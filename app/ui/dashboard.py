@@ -437,7 +437,7 @@ class DashboardPage(QWidget):
             return
         ret = QMessageBox.question(self, "更新", f"新版本 v{self._latest} 已下载，是否立即重启并更新？")
         if ret == QMessageBox.Yes:
+            # apply_update 内部会 os._exit 立即退出，由 update.bat 完成替换与重启
             updater.apply_update(self._new_exe_path)
-            QApplication.instance().quit()
         else:
             self.version_label.setText(f"已下载 v{self._latest}，重启后生效")

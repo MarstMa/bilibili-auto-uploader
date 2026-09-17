@@ -83,23 +83,36 @@ def download_latest(asset_url: str, dest_path: str, on_progress=None) -> bool:
         return False
 
 
+def _build_update_bat(exe_name: str, new_name: str) -> str:
+    """生成替换 exe 的批处理脚本（用重命名避免覆盖被锁定的运行中文件）。"""
+    old_name = exe_name + ".old"
+    return (
+        "@echo off\n"
+        "chcp 65001 >nul\n"
+        f'if exist "%~dp0{old_name}" del /q "%~dp0{old_name}" >nul 2>&1\n'
+        ":wait\n"
+        "timeout /t 1 /nobreak >nul\n"
+        f'ren "%~dp0{exe_name}" "{old_name}" >nul 2>&1\n'
+        f'if not exist "%~dp0{old_name}" goto wait\n'
+        f'ren "%~dp0{new_name}" "{exe_name}" >nul 2>&1\n'
+        f'if not exist "%~dp0{exe_name}" goto wait\n'
+        f'start "" "%~dp0{exe_name}"\n'
+        "timeout /t 2 /nobreak >nul\n"
+        f'del /q "%~dp0{old_name}" >nul 2>&1\n'
+        'del "%~f0"\n'
+    )
+
+
 def apply_update(new_exe_path: str) -> None:
-    """写并运行 update.bat，退出程序后由脚本完成「替换旧 exe + 重启」。"""
+    """写并运行 update.bat，随后立即强制退出（由 bat 完成替换旧 exe 与重启）。"""
     exe_path = sys.executable
     exe_dir = os.path.dirname(exe_path)
     bat_path = os.path.join(exe_dir, "update.bat")
     new_name = os.path.basename(new_exe_path)
     exe_name = os.path.basename(exe_path)
 
-    bat = (
-        "@echo off\n"
-        ":retry\n"
-        "timeout /t 2 /nobreak >nul\n"
-        f'move /y "%~dp0{new_name}" "%~dp0{exe_name}" >nul 2>&1\n'
-        f'if exist "%~dp0{new_name}" goto retry\n'
-        f'start "" "%~dp0{exe_name}"\n'
-        'del "%~f0"\n'
-    )
     with open(bat_path, "w", encoding="ascii") as f:
-        f.write(bat)
+        f.write(_build_update_bat(exe_name, new_name))
+
     os.startfile(bat_path)
+    os._exit(0)  # 立即退出，释放旧 exe 文件锁，交给 bat 完成替换
