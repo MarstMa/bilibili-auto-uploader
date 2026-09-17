@@ -1,0 +1,26 @@
+# 运行时数据（含登录凭据、上传历史、配置）
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 打包产物（PyInstaller 中间产物与输出）
+build/*
+!build/build.py
+dist/
+*.spec
+*.ico
+
+# 临时/日志
+*.log
+*.png
+*.jpg
+!app/resources/**/*.png
+
+# 编辑器
+.idea/
+.vscode/
