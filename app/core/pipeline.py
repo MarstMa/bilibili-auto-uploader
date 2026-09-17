@@ -25,6 +25,17 @@ class _Submission:
     source_files: list  # 组成该稿件的原始文件（scanner.VideoFile）
 
 
+def _friendly_error(e: Exception) -> str:
+    """把异常转成易读的一句话（提取 B 站错误码与信息）。"""
+    code = getattr(e, "code", None)
+    msg = getattr(e, "msg", None) or getattr(e, "message", None)
+    if msg is None:
+        msg = str(e)
+    if code is not None:
+        return f"错误码 {code}：{msg}"
+    return msg
+
+
 def _make_parts(files, config, threshold: int, temp_dir: str, emit: ProgressFn) -> list[tuple[str, str]]:
     """把一批文件转为分P列表；超大文件先拆分。"""
     parts: list[tuple[str, str]] = []
@@ -117,11 +128,19 @@ def _ensure_credential(emit: ProgressFn):
 
 def _run_single_folder(effective_cfg: dict, folder_path: str, state, emit: ProgressFn, cred) -> dict:
     """处理单个文件夹：扫描→命名→拆分→上传→记录→清理。"""
+    name = os.path.basename(folder_path) or folder_path
+
+    # 转载必须填来源，否则 B 站会在上传完成后才报错，这里提前拦截
+    if int(effective_cfg.get("copyright", 1)) == 2 and not str(effective_cfg.get("source", "")).strip():
+        msg = f"[{name}] 该文件夹设为「转载」，但未填写转载来源，请到文件夹详情填写来源或改回「原创」。"
+        emit(msg)
+        logger.warning(msg)
+        return {"event": "failed", "count": 0, "message": msg}
+
     exts = effective_cfg.get("video_extensions", [])
     exclude = _exclude_folders(effective_cfg, folder_path)
     new_files = scanner.scan_new_files([folder_path], exts, state, exclude_folders=exclude)
 
-    name = os.path.basename(folder_path) or folder_path
     if not new_files:
         return {"event": "no_new_files", "count": 0}
 
@@ -176,8 +195,9 @@ def _run_single_folder(effective_cfg: dict, folder_path: str, state, emit: Progr
             uploads_done.append({"title": sub.title, "bvid": bvid, "parts": len(sub.parts)})
         except Exception as e:  # noqa: BLE001
             failed_count += 1
-            logger.exception("上传失败：%s", sub.title)
-            emit(f"上传失败：{sub.title}（{e}）")
+            err = _friendly_error(e)
+            logger.error("上传失败：%s → %s", sub.title, err)
+            emit(f"上传失败：{sub.title}（{err}）")
 
     if not uploads_done:
         return {"event": "failed", "count": 0, "message": f"[{name}] 未能成功上传任何视频。"}
