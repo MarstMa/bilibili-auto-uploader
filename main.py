@@ -36,7 +36,14 @@ def main() -> None:
             app.setStyleSheet(f.read())
 
     window = MainWindow()
-    window.show()
+    # 若已配置开机自启，刷新注册表（保持 exe 路径最新）
+    if window.config.get("auto_start", False):
+        from app.core import autostart
+
+        autostart.enable()
+    # 可选择最小化启动（仅驻留托盘，不显示主窗口）
+    if not window.config.get("start_minimized", False):
+        window.show()
     sys.exit(app.exec())
 
 

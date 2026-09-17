@@ -32,6 +32,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "archive_folder": "",  # 归档目录，空=监控目录下的 auto_archived
     "auto_start": False,  # 开机自启
     "minimize_to_tray": True,  # 关闭窗口时最小化到托盘
+    "start_minimized": False,  # 启动时最小化到托盘（不显示主窗口）
     "upload_workers": 3,  # 上传并发数
     "max_retry": 3,  # 失败重试次数
 }

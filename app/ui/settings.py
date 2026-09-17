@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core import autostart
 from app.core.config import DEFAULT_CONFIG
 
 from .submission_form import SubmissionForm
@@ -113,8 +114,12 @@ class SettingsPage(QWidget):
         form.addRow(self.tray_check)
 
         self.autostart_check = QCheckBox("开机自启（注册到系统启动项）")
-        self.autostart_check.setToolTip("开机时自动启动本程序")
+        self.autostart_check.setToolTip("开机时自动启动本程序（写入 Windows 启动项）")
         form.addRow(self.autostart_check)
+
+        self.start_minimized_check = QCheckBox("启动时最小化到托盘（不显示主窗口）")
+        self.start_minimized_check.setToolTip("勾选后启动时只驻留系统托盘，需要时点托盘图标打开主窗口")
+        form.addRow(self.start_minimized_check)
         return g
 
     def _reset(self) -> None:
@@ -130,6 +135,7 @@ class SettingsPage(QWidget):
         self.retry_spin.setValue(int(c.get("max_retry", 3)))
         self.tray_check.setChecked(bool(c.get("minimize_to_tray", True)))
         self.autostart_check.setChecked(bool(c.get("auto_start", False)))
+        self.start_minimized_check.setChecked(bool(c.get("start_minimized", False)))
 
     def save(self) -> None:
         c = self.config.data
@@ -144,6 +150,13 @@ class SettingsPage(QWidget):
         c["max_retry"] = self.retry_spin.value()
         c["minimize_to_tray"] = self.tray_check.isChecked()
         c["auto_start"] = self.autostart_check.isChecked()
+        c["start_minimized"] = self.start_minimized_check.isChecked()
+
+        # 真正注册 / 取消开机自启动
+        if c["auto_start"]:
+            autostart.enable()
+        else:
+            autostart.disable()
 
         self.config.save()
         self.settings_saved.emit()
