@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from bilibili_api.utils.network import Credential
-from bilibili_api.video_uploader import VideoMeta, VideoUploader, VideoUploaderPage
+from bilibili_api.video_uploader import VideoMeta, VideoUploader, VideoUploaderEvents, VideoUploaderPage
 
 from . import splitter
 
@@ -74,8 +74,47 @@ def _make_cover(cover_path: str, first_video: str, temp_dir: str) -> str:
         return ""
 
 
-async def _do_upload(pages: list, meta: VideoMeta, credential: Credential) -> dict:
-    uploader = VideoUploader(pages, meta, credential)
+def _make_delay_factory(publish_mode: str, publish_delay_hours: float, publish_schedule_time: str):
+    """返回一个在「提交时」才计算定时发布时间的工厂；直接发布返回 None。"""
+    if publish_mode not in ("timed", "schedule"):
+        return None
+
+    def factory() -> int:
+        return _compute_delay_time(publish_mode, publish_delay_hours, publish_schedule_time)
+
+    return factory
+
+
+class _ScheduledVideoUploader(VideoUploader):
+    """上传完成、提交之前重新计算定时发布时间，避免大文件上传耗时导致发布时间过期。"""
+
+    def __init__(self, pages, meta, credential, delay_factory=None):
+        super().__init__(pages, meta, credential)
+        self._delay_factory = delay_factory
+
+    async def _main(self):
+        videos = []
+        for page in self.pages:
+            data = await self._upload_page(page)
+            videos.append(
+                {
+                    "title": page.title,
+                    "desc": page.description,
+                    "filename": data["filename"],
+                    "cid": data["cid"],
+                }
+            )
+        cover_url = await self._upload_cover()
+        # 上传已完成，此刻再算发布时间，保证一定在未来
+        if self._delay_factory is not None and isinstance(self.meta, VideoMeta):
+            self.meta.delay_time = self._delay_factory()
+        result = await self._submit(videos, cover_url)
+        self.dispatch(VideoUploaderEvents.COMPLETED.value, result)
+        return result
+
+
+async def _do_upload(pages: list, meta: VideoMeta, credential: Credential, delay_factory=None) -> dict:
+    uploader = _ScheduledVideoUploader(pages, meta, credential, delay_factory)
     return await uploader.start()
 
 
@@ -116,7 +155,7 @@ def upload_videos(
 
     temp_dir = temp_dir or tempfile.mkdtemp(prefix="bili_upload_")
     cover_file = _make_cover(cover_path, parts[0][0], temp_dir)
-    delay = _compute_delay_time(publish_mode, publish_delay_hours, publish_schedule_time)
+    delay_factory = _make_delay_factory(publish_mode, publish_delay_hours, publish_schedule_time)
 
     meta = VideoMeta(
         tid=int(tid),
@@ -126,15 +165,13 @@ def upload_videos(
         tags=tags,
         original=(int(copyright) == 1),
         source=source if int(copyright) != 1 else None,
-        delay_time=delay,
+        delay_time=None,  # 定时发布时间在上传完成后由 _ScheduledVideoUploader 重新计算
     )
 
     pages = [VideoUploaderPage(path=p, title=t) for p, t in parts]
 
-    logger.info(
-        "开始上传：标题=%s，分P数=%d，模式=%s",
-        title, len(pages), "定时发布" if publish_mode == "timed" else "直接发布",
-    )
-    result = asyncio.run(_do_upload(pages, meta, credential))
+    mode_label = {"timed": "定时发布", "schedule": "定时发布", "public": "直接发布"}.get(publish_mode, publish_mode)
+    logger.info("开始上传：标题=%s，分P数=%d，模式=%s", title, len(pages), mode_label)
+    result = asyncio.run(_do_upload(pages, meta, credential, delay_factory))
     logger.info("上传完成：bvid=%s，aid=%s", result.get("bvid"), result.get("aid"))
     return result

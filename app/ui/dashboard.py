@@ -178,6 +178,10 @@ class DashboardPage(QWidget):
         self.version_label.setObjectName("hint")
         bottom.addWidget(self.version_label)
         bottom.addStretch()
+        log_btn = QPushButton("查看日志")
+        log_btn.setToolTip("打开日志文件，查看详细报错信息")
+        log_btn.clicked.connect(self._open_log)
+        bottom.addWidget(log_btn)
         self.update_btn = QPushButton("检查更新")
         self.update_btn.clicked.connect(self._on_update_btn_clicked)
         bottom.addWidget(self.update_btn)
@@ -405,6 +409,16 @@ class DashboardPage(QWidget):
         self.update_btn.setEnabled(True)
         self.update_btn.setText("检查更新")
         self.version_label.setText(f"当前版本 v{VERSION}（检查失败）")
+
+    def _open_log(self) -> None:
+        """打开日志文件（默认编辑器），方便查看报错。"""
+        from app.core.config import get_data_dir
+
+        log_path = os.path.join(get_data_dir(), "app.log")
+        if os.path.exists(log_path):
+            os.startfile(log_path)
+        else:
+            QMessageBox.information(self, "日志", f"日志文件不存在：{log_path}")
 
     def _start_download_update(self) -> None:
         if not getattr(sys, "frozen", False):
