@@ -36,8 +36,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_retry": 3,  # 失败重试次数
 }
 
-# 可被单个文件夹覆盖的设置项（投稿全套）
+# 可被单个文件夹覆盖的设置项（投稿全套 + 扫描时间）
 FOLDER_OVERRIDE_KEYS: list[str] = [
+    "schedule_times",
     "title_template",
     "part_title_template",
     "desc_template",

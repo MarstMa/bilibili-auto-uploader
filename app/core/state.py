@@ -94,11 +94,19 @@ class State:
 
     def last_status_for_folder(self, folder_path: str):
         """某文件夹最近一次上传记录（用于卡片状态展示）。返回 (title, bvid, status, created_at) 或 None。"""
-        prefix = os.path.normpath(folder_path) + os.sep
+        base = folder_path.rstrip("\\/")
+        # 整条路径统一为一种分隔符，兼容前后斜杠两种历史数据
+        prefixes = [
+            base.replace("/", "\\") + "\\%",
+            base.replace("\\", "/") + "/%",
+        ]
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT title, bvid, status, created_at FROM uploads "
-                "WHERE path LIKE ? ORDER BY id DESC LIMIT 1",
-                (prefix + "%",),
-            ).fetchone()
-        return row
+            for p in prefixes:
+                row = conn.execute(
+                    "SELECT title, bvid, status, created_at FROM uploads "
+                    "WHERE path LIKE ? ORDER BY id DESC LIMIT 1",
+                    (p,),
+                ).fetchone()
+                if row:
+                    return row
+        return None

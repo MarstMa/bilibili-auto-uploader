@@ -244,6 +244,9 @@ def run_once(config: dict, state, on_progress: ProgressFn | None = None) -> dict
     events = []
     for folder in folders:
         path = folder.get("path", "")
+        if folder.get("enabled", True) is False:
+            emit(f"已禁用自动扫描，跳过：{os.path.basename(path) or path}")
+            continue
         if not os.path.isdir(path):
             emit(f"文件夹不存在，跳过：{path}")
             continue

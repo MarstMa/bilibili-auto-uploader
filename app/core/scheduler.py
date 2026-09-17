@@ -30,8 +30,11 @@ class DailyScheduler:
             pass
         return None, None
 
-    def set_schedule(self, times: list[str], callback: Callable[[], None]) -> None:
-        """重建定时任务。times 形如 ["08:00", "20:30"]。"""
+    def set_folder_schedules(self, folder_schedules, callback) -> None:
+        """按文件夹设置定时任务。
+
+        folder_schedules: [(folder_path, [times]), ...]；callback(folder_path) 在到点时调用。
+        """
         for job in self._jobs:
             try:
                 self._scheduler.remove_job(job.id)
@@ -39,21 +42,25 @@ class DailyScheduler:
                 pass
         self._jobs = []
 
-        for t in times or []:
-            h, m = self._parse_time(t)
-            if h is None:
-                logger.warning("忽略非法时间：%s", t)
-                continue
-            job = self._scheduler.add_job(
-                callback,
-                CronTrigger(hour=h, minute=m),
-                id=f"daily_{h:02d}{m:02d}",
-                replace_existing=True,
-                max_instances=1,  # 上一次没跑完不重复触发
-                coalesce=True,
-            )
-            self._jobs.append(job)
-        logger.info("已设置定时：%s", times or [])
+        idx = 0
+        for folder_path, times in folder_schedules:
+            for t in times or []:
+                h, m = self._parse_time(t)
+                if h is None:
+                    logger.warning("忽略非法时间：%s", t)
+                    continue
+                job = self._scheduler.add_job(
+                    callback,
+                    CronTrigger(hour=h, minute=m),
+                    args=[folder_path],
+                    id=f"folder_{idx}_{h:02d}{m:02d}",
+                    replace_existing=True,
+                    max_instances=1,  # 上一次没跑完不重复触发
+                    coalesce=True,
+                )
+                self._jobs.append(job)
+                idx += 1
+        logger.info("已设置 %d 个文件夹定时任务", len(self._jobs))
 
     def start(self) -> None:
         if not self._scheduler.running:

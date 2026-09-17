@@ -36,6 +36,8 @@ class _FolderCard(QFrame):
         self.setObjectName("card")
         self.setCursor(Qt.PointingHandCursor)
         self.path = path
+        self._pending = 0
+        self._uploading = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 18, 14)
@@ -59,7 +61,20 @@ class _FolderCard(QFrame):
         layout.addWidget(path_label)
 
     def set_pending(self, count: int) -> None:
-        self.pending_label.setText(f"待上传：{count} 个")
+        self._pending = count
+        self._render_pending()
+
+    def set_uploading(self, uploading: bool) -> None:
+        self._uploading = uploading
+        self._render_pending()
+
+    def _render_pending(self) -> None:
+        if self._uploading:
+            self.pending_label.setText("上传中…")
+            self.pending_label.setStyleSheet("color:#e0a030;")
+        else:
+            self.pending_label.setText(f"待上传：{self._pending} 个")
+            self.pending_label.setStyleSheet("")
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -80,6 +95,7 @@ class DashboardPage(QWidget):
         self.scheduler = scheduler
         self._notify = notify or (lambda t, m: None)
         self._cards: dict[str, _FolderCard] = {}
+        self._uploading: set[str] = set()
         self._check_task = None
         self._run_worker = None
         self._count_worker = None
@@ -103,6 +119,8 @@ class DashboardPage(QWidget):
         self.detail_page = FolderDetailPage(self.config, self.state, notify=self._notify)
         self.detail_page.back_requested.connect(self._back_to_cards)
         self.detail_page.deleted.connect(self._back_to_cards)
+        self.detail_page.upload_started.connect(self._on_folder_upload_started)
+        self.detail_page.upload_finished.connect(self._on_folder_upload_finished)
         self.stack.addWidget(self.detail_page)
 
         outer = QVBoxLayout(self)
@@ -227,9 +245,13 @@ class DashboardPage(QWidget):
             name = os.path.basename(path.rstrip("\\/")) or path
             card = _FolderCard(path, name)
             card.clicked.connect(self._open_folder)
-            # 最近状态（同步 SQLite 查询）
-            last = self.state.last_status_for_folder(path)
-            card.set_status(f"最近：{last[0]}（{last[3]}）" if last else "暂无上传记录")
+            if folder.get("enabled", True) is False:
+                card.set_status("已禁用自动扫描")
+            else:
+                last = self.state.last_status_for_folder(path)
+                card.set_status(f"最近：{last[0]}（{last[3]}）" if last else "暂无上传记录")
+            if path in self._uploading:
+                card.set_uploading(True)
             self._cards[path] = card
             self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
 
@@ -273,7 +295,7 @@ class DashboardPage(QWidget):
         if any(f.get("path") == path for f in self.config.get("folders", [])):
             QMessageBox.information(self, "提示", "该文件夹已在列表中。")
             return
-        self.config.data.setdefault("folders", []).append({"path": path})
+        self.config.data.setdefault("folders", []).append({"path": path, "enabled": True})
         self.config.save()
         self.refresh()
 
@@ -283,6 +305,16 @@ class DashboardPage(QWidget):
 
     def _back_to_cards(self) -> None:
         self.stack.setCurrentWidget(self.cards_page)
+        self.refresh()
+
+    def _on_folder_upload_started(self, path: str) -> None:
+        self._uploading.add(path)
+        card = self._cards.get(path)
+        if card:
+            card.set_uploading(True)
+
+    def _on_folder_upload_finished(self, path: str) -> None:
+        self._uploading.discard(path)
         self.refresh()
 
     # ---------- 上传 ----------
@@ -302,10 +334,30 @@ class DashboardPage(QWidget):
         self._run_worker.start()
 
     def _on_run_done(self, result: dict) -> None:
-        msg = result.get("message", "")
-        event = result.get("event", "")
-        self.log_label.setText(msg)
+        self.log_label.setText(result.get("message", ""))
+        self._notify_result(result.get("event", ""), result.get("message", ""))
         self.refresh()
+
+    def run_folder(self, path: str) -> None:
+        """定时任务触发：上传单个文件夹。"""
+        if self._run_worker is not None and self._run_worker.isRunning():
+            return
+        self._on_folder_upload_started(path)
+        self.log_label.setText(f"定时触发：{os.path.basename(path)}")
+        self._run_worker = RunWorker(
+            lambda emit: pipeline.run_folder(self.config.data, path, self.state, on_progress=emit),
+            self,
+        )
+        self._run_worker.progress.connect(self.log_label.setText)
+        self._run_worker.finished_result.connect(lambda r: self._on_folder_run_done(path, r))
+        self._run_worker.start()
+
+    def _on_folder_run_done(self, path: str, result: dict) -> None:
+        self._on_folder_upload_finished(path)
+        self.log_label.setText(result.get("message", ""))
+        self._notify_result(result.get("event", ""), result.get("message", ""))
+
+    def _notify_result(self, event: str, msg: str) -> None:
         if event == "success":
             self._notify("上传成功", msg)
         elif event == "partial":

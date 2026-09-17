@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.config import Config
+from app.core.config import Config, get_folder_effective_config
 from app.core.scheduler import DailyScheduler
 from app.core.state import State
 from app.core import updater
@@ -51,8 +51,8 @@ def _make_app_icon() -> QIcon:
 class MainWindow(QMainWindow):
     """应用主窗口。"""
 
-    # 定时触发信号（在 APScheduler 线程发出，排队回主线程执行）
-    scheduled_run = Signal()
+    # 定时触发信号（在 APScheduler 线程发出，排队回主线程执行），参数为文件夹路径
+    scheduled_run = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
         # 联动
         self.login_page.login_changed.connect(self.dashboard.refresh)
         self.settings_page.settings_saved.connect(self._on_settings_saved)
-        self.scheduled_run.connect(self.dashboard.run_now)
+        self.scheduled_run.connect(self.dashboard.run_folder)
 
         root.addWidget(sidebar)
         root.addWidget(self.stack, 1)
@@ -167,8 +167,14 @@ class MainWindow(QMainWindow):
         self.pages[key].refresh()
 
     def _apply_schedule(self) -> None:
-        times = self.config.get("schedule_times", ["08:00"])
-        self.scheduler.set_schedule(times, self.scheduled_run.emit)
+        schedules = []
+        for folder in self.config.get("folders", []):
+            path = folder.get("path", "")
+            if not path or folder.get("enabled", True) is False:
+                continue
+            eff = get_folder_effective_config(self.config.data, folder)
+            schedules.append((path, eff.get("schedule_times", [])))
+        self.scheduler.set_folder_schedules(schedules, self.scheduled_run.emit)
         self.scheduler.start()
 
     def _on_settings_saved(self) -> None:

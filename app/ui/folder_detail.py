@@ -4,9 +4,12 @@ import os
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -25,6 +28,8 @@ class FolderDetailPage(QWidget):
 
     back_requested = Signal()
     deleted = Signal()
+    upload_started = Signal(str)
+    upload_finished = Signal(str)
 
     def __init__(self, config, state, notify=None) -> None:
         super().__init__()
@@ -77,6 +82,22 @@ class FolderDetailPage(QWidget):
         card_layout.addLayout(actions)
         layout.addWidget(card)
 
+        # 定时与启用
+        sched_card = QFrame()
+        sched_card.setObjectName("card")
+        sched_layout = QVBoxLayout(sched_card)
+        sched_layout.setContentsMargins(18, 14, 18, 14)
+        sched_layout.setSpacing(8)
+        self.enabled_check = QCheckBox("启用自动扫描（关闭后定时任务会跳过此文件夹）")
+        self.enabled_check.setToolTip("关闭后，定时扫描与「立即上传全部」会跳过此文件夹；手动「立即上传此文件夹」仍可用")
+        sched_layout.addWidget(self.enabled_check)
+        sched_form = QFormLayout()
+        self.schedule_edit = QLineEdit()
+        self.schedule_edit.setToolTip("此文件夹每天自动扫描的时刻，逗号分隔，如 08:00, 20:00")
+        sched_form.addRow("每天运行时刻", self.schedule_edit)
+        sched_layout.addLayout(sched_form)
+        layout.addWidget(sched_card)
+
         # 投稿设置表单
         self.form = SubmissionForm()
         self.form_card = QFrame()
@@ -124,6 +145,8 @@ class FolderDetailPage(QWidget):
         folder = self._find_folder()
         effective = get_folder_effective_config(self.config.data, folder)
         self.form.load(effective)
+        self.schedule_edit.setText(", ".join(effective.get("schedule_times", [])))
+        self.enabled_check.setChecked(bool(folder.get("enabled", True)))
 
         last = self.state.last_status_for_folder(self.folder_path)
         if last:
@@ -135,6 +158,10 @@ class FolderDetailPage(QWidget):
     def save(self) -> None:
         folder = self._find_folder()
         self.form.save_to(folder)
+        folder["schedule_times"] = [
+            x.strip() for x in self.schedule_edit.text().replace("，", ",").split(",") if x.strip()
+        ]
+        folder["enabled"] = self.enabled_check.isChecked()
         self.config.save()
         QMessageBox.information(self, "已保存", "该文件夹的设置已保存。")
 
@@ -158,6 +185,7 @@ class FolderDetailPage(QWidget):
             return
         self.log_label.setText("开始运行…")
         path = self.folder_path
+        self.upload_started.emit(path)
         self._run_worker = RunWorker(
             lambda emit: pipeline.run_folder(self.config.data, path, self.state, on_progress=emit),
             self,
@@ -167,6 +195,7 @@ class FolderDetailPage(QWidget):
         self._run_worker.start()
 
     def _on_run_done(self, result: dict) -> None:
+        self.upload_finished.emit(self.folder_path)
         msg = result.get("message", "")
         event = result.get("event", "")
         self.log_label.setText(msg)

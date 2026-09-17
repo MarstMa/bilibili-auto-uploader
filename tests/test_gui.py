@@ -35,6 +35,37 @@ def test_gui():
     w.close()
 
 
+def test_folder_detail():
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from PySide6.QtWidgets import QMessageBox
+
+    # 离屏模式下避免模态弹窗阻塞
+    QMessageBox.information = staticmethod(lambda *a, **k: None)
+
+    from app.core.config import Config
+    from app.core.state import State
+    from app.ui.folder_detail import FolderDetailPage
+
+    cfg = Config(path=os.path.join(tempfile.mkdtemp(), "config.json"))
+    state = State(db_path=os.path.join(tempfile.mkdtemp(), "h.db"))
+    cfg.data["folders"] = [{"path": "C:/test", "enabled": True}]
+
+    page = FolderDetailPage(cfg, state)
+    page.set_folder("C:/test")
+    assert page.schedule_edit is not None
+    assert page.enabled_check.isChecked() is True
+
+    page.enabled_check.setChecked(False)
+    page.schedule_edit.setText("20:00")
+    page.save()
+    folder = cfg.data["folders"][0]
+    assert folder["enabled"] is False
+    assert folder["schedule_times"] == ["20:00"]
+    print("[OK] 文件夹详情：扫描时间 + 启用开关")
+
+
 if __name__ == "__main__":
     test_gui()
+    test_folder_detail()
     print("\n全部测试通过")
