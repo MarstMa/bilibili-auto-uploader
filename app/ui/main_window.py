@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.dashboard = DashboardPage(self.config, self.state, self.scheduler)
+        self.dashboard = DashboardPage(self.config, self.state, self.scheduler, notify=self._notify)
         self.settings_page = SettingsPage(self.config)
         self.login_page = LoginPage(self.config)
         self.history_page = HistoryPage(self.state)
@@ -150,6 +150,10 @@ class MainWindow(QMainWindow):
     def _show_from_tray(self) -> None:
         self.show()
         self.activateWindow()
+
+    def _notify(self, title: str, message: str) -> None:
+        """通过系统托盘向 Windows 发布通知。"""
+        self.tray.showMessage(title, message, QSystemTrayIcon.Information, 6000)
 
     def _quit(self) -> None:
         self.scheduler.shutdown()

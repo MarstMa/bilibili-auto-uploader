@@ -21,15 +21,18 @@ from .workers import AsyncTask, RunWorker
 class DashboardPage(QWidget):
     """仪表盘页。"""
 
-    def __init__(self, config, state, scheduler) -> None:
+    def __init__(self, config, state, scheduler, notify=None) -> None:
         super().__init__()
         self.config = config
         self.state = state
         self.scheduler = scheduler
+        self._notify = notify or (lambda title, msg: None)
         self._check_task = None
         self._run_worker = None
         self._update_available = False
         self._latest_url = ""
+        self._notified_start = False
+        self._login_expired_notified = False
         self._build()
 
     def _build(self) -> None:
@@ -123,9 +126,13 @@ class DashboardPage(QWidget):
     def _on_check_done(self, result) -> None:
         kind, name = result
         if kind == "ok":
+            self._login_expired_notified = False
             self._set_login_status(f"已登录：{name or '已登录'}", "#3d8f5c")
         else:
             self._set_login_status("登录已过期，请重新登录", "#c98a2f")
+            if not self._login_expired_notified:
+                self._login_expired_notified = True
+                self._notify("登录失效", "登录已过期，请重新登录。")
 
     def _set_login_status(self, text: str, color: str) -> None:
         self.login_status.setText(text)
@@ -170,6 +177,7 @@ class DashboardPage(QWidget):
 
         self.run_btn.setEnabled(False)
         self.log_label.setText("开始运行…")
+        self._notified_start = False
 
         self._run_worker = RunWorker(
             lambda emit: pipeline.run_once(self.config.data, self.state, on_progress=emit),
@@ -181,10 +189,22 @@ class DashboardPage(QWidget):
 
     def _on_progress(self, msg: str) -> None:
         self.log_label.setText(msg)
+        if not self._notified_start and msg.startswith("上传中"):
+            self._notified_start = True
+            self._notify("开始上传", "正在上传视频…")
 
     def _on_run_done(self, result: dict) -> None:
         self.run_btn.setEnabled(True)
         msg = result.get("message", "")
-        ok = bool(result.get("ok"))
+        event = result.get("event", "")
         self.log_label.setText(msg)
         self.refresh()
+
+        if event == "success":
+            self._notify("上传成功", msg)
+        elif event == "partial":
+            self._notify("上传完成（部分失败）", msg)
+        elif event == "failed":
+            self._notify("上传失败", msg)
+        elif event in ("login_expired", "no_login"):
+            self._notify("登录失效", msg)

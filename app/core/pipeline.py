@@ -127,22 +127,22 @@ def run_once(config, state, on_progress: ProgressFn | None = None) -> dict:
 
     folders = [f for f in config.get("watch_folders", []) if f]
     if not folders:
-        return {"ok": False, "message": "未配置监控文件夹，请先在「设置」中添加。"}
+        return {"ok": False, "event": "no_folder", "message": "未配置监控文件夹，请先在「设置」中添加。"}
 
     cred = auth.load_credential()
     if cred is None:
-        return {"ok": False, "message": "未登录，请先在「登录」页扫码或填写 Cookie。"}
+        return {"ok": False, "event": "no_login", "message": "未登录，请先在「登录」页扫码或填写 Cookie。"}
 
     emit("校验登录状态…")
     if not asyncio.run(auth.check_login(cred)):
-        return {"ok": False, "message": "登录已过期，请重新登录。"}
+        return {"ok": False, "event": "login_expired", "message": "登录已过期，请重新登录。"}
 
     exts = config.get("video_extensions", [])
     exclude = _exclude_folders(config, folders)
     new_files = scanner.scan_new_files(folders, exts, state, exclude_folders=exclude)
 
     if not new_files:
-        return {"ok": True, "message": "没有发现新的视频文件。"}
+        return {"ok": True, "event": "no_new_files", "message": "没有发现新的视频文件。"}
 
     emit(f"发现 {len(new_files)} 个新文件，开始处理…")
 
@@ -152,11 +152,12 @@ def run_once(config, state, on_progress: ProgressFn | None = None) -> dict:
         submissions = _build_submissions(new_files, config, threshold, temp_dir, emit)
     except Exception as e:  # noqa: BLE001
         logger.exception("构建上传任务失败")
-        return {"ok": False, "message": f"处理失败：{e}"}
+        return {"ok": False, "event": "failed", "message": f"处理失败：{e}"}
 
     cleanup_mode = config.get("cleanup_mode", "archive")
     archive_folder = config.get("archive_folder", "")
     uploads_done = []
+    failed_count = 0
 
     for sub in submissions:
         emit(f"上传中：{sub.title}（{len(sub.parts)} 个分P）…")
@@ -195,15 +196,24 @@ def run_once(config, state, on_progress: ProgressFn | None = None) -> dict:
                 emit(f"{action}：{os.path.basename(f.path)}")
             uploads_done.append({"title": sub.title, "bvid": bvid, "parts": len(sub.parts)})
         except Exception as e:  # noqa: BLE001
+            failed_count += 1
             logger.exception("上传失败：%s", sub.title)
             emit(f"上传失败：{sub.title}（{e}）")
 
     if not uploads_done:
-        return {"ok": False, "message": "本次未能成功上传任何视频，详见日志。"}
+        return {"ok": False, "event": "failed", "message": "本次未能成功上传任何视频，详见日志。"}
 
     n = sum(u["parts"] for u in uploads_done)
+    if failed_count > 0:
+        return {
+            "ok": True,
+            "event": "partial",
+            "message": f"完成：上传 {len(uploads_done)} 个稿件，{failed_count} 个失败。",
+            "uploads": uploads_done,
+        }
     return {
         "ok": True,
+        "event": "success",
         "message": f"完成：上传 {len(uploads_done)} 个稿件，共 {n} 个分P。",
         "uploads": uploads_done,
     }
