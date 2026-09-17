@@ -1,8 +1,12 @@
-"""历史记录页：展示上传历史。"""
+"""历史记录页：展示上传历史，支持按文件夹筛选。"""
+
+import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QTableWidget,
@@ -15,9 +19,10 @@ from PySide6.QtWidgets import (
 class HistoryPage(QWidget):
     """历史记录页。"""
 
-    def __init__(self, state) -> None:
+    def __init__(self, state, config) -> None:
         super().__init__()
         self.state = state
+        self.config = config
         self._build()
 
     def _build(self) -> None:
@@ -28,6 +33,14 @@ class HistoryPage(QWidget):
         title = QLabel("历史记录")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
+
+        top = QHBoxLayout()
+        top.addWidget(QLabel("筛选文件夹："))
+        self.filter_combo = QComboBox()
+        self.filter_combo.currentIndexChanged.connect(self._load)
+        top.addWidget(self.filter_combo, 1)
+        top.addStretch()
+        layout.addLayout(top)
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["文件名", "标题", "BVID", "分P数", "状态", "时间"])
@@ -45,12 +58,34 @@ class HistoryPage(QWidget):
         layout.addWidget(self.hint)
 
     def refresh(self) -> None:
-        rows = self.state.recent(limit=500)
+        # 重建筛选下拉，尽量保留当前选择
+        current = self.filter_combo.currentData()
+        self.filter_combo.blockSignals(True)
+        self.filter_combo.clear()
+        self.filter_combo.addItem("全部", "")
+        for f in self.config.get("folders", []):
+            path = f.get("path", "")
+            if path:
+                self.filter_combo.addItem(os.path.basename(path.rstrip("\\/")) or path, path)
+        self.filter_combo.blockSignals(False)
+        if current:
+            idx = self.filter_combo.findData(current)
+            if idx >= 0:
+                self.filter_combo.setCurrentIndex(idx)
+        self._load()
+
+    def _load(self) -> None:
+        folder = self.filter_combo.currentData() or ""
+        rows = self.state.recent(limit=2000)
+        if folder:
+            prefix = os.path.normcase(os.path.normpath(folder))
+            rows = [
+                r for r in rows
+                if os.path.normcase(os.path.normpath(r[0] or "")).startswith(prefix)
+            ]
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             path, title, bvid, part_count, status, created_at = row
-            import os
-
             values = [
                 os.path.basename(path or ""),
                 title or "",

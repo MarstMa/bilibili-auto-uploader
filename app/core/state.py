@@ -91,3 +91,14 @@ class State:
                 (limit,),
             ).fetchall()
         return rows
+
+    def last_status_for_folder(self, folder_path: str):
+        """某文件夹最近一次上传记录（用于卡片状态展示）。返回 (title, bvid, status, created_at) 或 None。"""
+        prefix = os.path.normpath(folder_path) + os.sep
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT title, bvid, status, created_at FROM uploads "
+                "WHERE path LIKE ? ORDER BY id DESC LIMIT 1",
+                (prefix + "%",),
+            ).fetchone()
+        return row

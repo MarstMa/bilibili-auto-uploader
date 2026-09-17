@@ -2,8 +2,11 @@
 
 import os
 import sys
+import tempfile
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+# 隔离真实数据，避免读到真实的登录凭据发起网络请求
+os.environ["APPDATA"] = tempfile.mkdtemp()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtWidgets import QApplication

@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         self.dashboard = DashboardPage(self.config, self.state, self.scheduler, notify=self._notify)
         self.settings_page = SettingsPage(self.config)
         self.login_page = LoginPage(self.config)
-        self.history_page = HistoryPage(self.state)
+        self.history_page = HistoryPage(self.state, self.config)
 
         self.pages = {
             "dashboard": self.dashboard,
