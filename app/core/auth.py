@@ -90,6 +90,28 @@ async def check_login(cred: Credential) -> bool:
         return False
 
 
+async def ensure_valid_credential(cred: Credential) -> Credential | None:
+    """校验凭据；若已过期但可刷新，则自动续期并保存。
+
+    返回有效的凭据，续期失败或无法续期时返回 None。
+    """
+    if cred is None or not cred.has_sessdata():
+        return None
+    if await check_login(cred):
+        return cred
+    # 已过期：尝试用 refresh_token 自动续期
+    if cred.has_ac_time_value() and cred.has_bili_jct():
+        try:
+            await cred.refresh()
+            if await check_login(cred):
+                save_credential(cred)
+                logger.info("登录凭据已自动续期")
+                return cred
+        except Exception as e:
+            logger.warning("自动续期凭据失败：%s", e)
+    return None
+
+
 async def get_nickname(cred: Credential) -> str:
     """获取当前账号昵称（用于界面展示）。"""
     try:

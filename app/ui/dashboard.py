@@ -115,10 +115,10 @@ class DashboardPage(QWidget):
     @staticmethod
     def _make_check_coro(cred):
         async def _check():
-            valid = await auth.check_login(cred)
-            if not valid:
+            valid_cred = await auth.ensure_valid_credential(cred)
+            if valid_cred is None:
                 return ("expired", "")
-            name = await auth.get_nickname(cred)
+            name = await auth.get_nickname(valid_cred)
             return ("ok", name)
 
         return _check

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import shutil
 import sys
 from copy import deepcopy
 from typing import Any
@@ -45,10 +46,33 @@ def get_base_dir() -> str:
 
 
 def get_data_dir() -> str:
-    """数据目录（config.json、history.db 等），不存在则创建。"""
-    path = os.path.join(get_base_dir(), "data")
+    """用户数据目录（config.json、history.db、credential.json 等）。
+
+    放在 C 盘系统用户数据目录（%APPDATA%/BiliAutoUpload），不占用程序目录。
+    """
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    path = os.path.join(base, "BiliAutoUpload")
     os.makedirs(path, exist_ok=True)
+    _migrate_old_data(path)
     return path
+
+
+def _migrate_old_data(new_dir: str) -> None:
+    """把旧版「程序目录/data」里的数据一次性迁移到新位置（不删除旧目录）。"""
+    old_dir = os.path.join(get_base_dir(), "data")
+    if not os.path.isdir(old_dir):
+        return
+    if os.path.normcase(os.path.abspath(old_dir)) == os.path.normcase(os.path.abspath(new_dir)):
+        return
+    for name in ("config.json", "history.db", "credential.json"):
+        old = os.path.join(old_dir, name)
+        new = os.path.join(new_dir, name)
+        if os.path.isfile(old) and not os.path.exists(new):
+            try:
+                shutil.copy2(old, new)
+                logger.info("已迁移数据文件：%s -> %s", old, new)
+            except OSError as e:
+                logger.warning("迁移数据文件失败 %s：%s", old, e)
 
 
 class Config:

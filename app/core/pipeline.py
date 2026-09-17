@@ -134,7 +134,8 @@ def run_once(config, state, on_progress: ProgressFn | None = None) -> dict:
         return {"ok": False, "event": "no_login", "message": "未登录，请先在「登录」页扫码或填写 Cookie。"}
 
     emit("校验登录状态…")
-    if not asyncio.run(auth.check_login(cred)):
+    cred = asyncio.run(auth.ensure_valid_credential(cred))
+    if cred is None:
         return {"ok": False, "event": "login_expired", "message": "登录已过期，请重新登录。"}
 
     exts = config.get("video_extensions", [])
