@@ -134,8 +134,6 @@ class MainWindow(QMainWindow):
         menu = QMenu()
         show_action = menu.addAction("显示主窗口")
         show_action.triggered.connect(self._show_from_tray)
-        run_action = menu.addAction("立即运行一次")
-        run_action.triggered.connect(self.dashboard.run_now)
         menu.addSeparator()
         quit_action = menu.addAction("退出")
         quit_action.triggered.connect(self._quit)

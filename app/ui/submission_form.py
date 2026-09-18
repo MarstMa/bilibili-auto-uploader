@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QSpinBox,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -20,6 +21,7 @@ from app.core.zones import ZONE_TREE, find_zone_for_tid
 TOOLTIPS = {
     "title_template": "稿件标题。可用变量：{date}日期、{time}时间、{index}当天序号、{original_name}原文件名、{folder}文件夹名、{count}总数",
     "part_title_template": "每个分P（每一集）的标题。常用 {part_index} 分P序号，例如：P{part_index}",
+    "date_offset_days": "日期偏移（天）。-1 表示标题里的 {date} 用昨天，0 表示今天，正数表示未来",
     "desc_template": "稿件简介，可含标题的变量，留空则不写简介",
     "tags": "稿件标签，逗号分隔，最多 10 个",
     "cover_path": "封面图片路径，留空则自动从视频首帧截取",
@@ -58,6 +60,10 @@ class SubmissionForm(QWidget):
 
         self.title_edit = row("主标题模板", QLineEdit(), "title_template")
         self.part_title_edit = row("分P标题模板", QLineEdit(), "part_title_template")
+        self.date_offset_spin = QSpinBox()
+        self.date_offset_spin.setRange(-30, 30)
+        self.date_offset_spin.setSuffix(" 天")
+        row("日期偏移", self.date_offset_spin, "date_offset_days")
         self.desc_edit = row("简介模板", QLineEdit(), "desc_template")
         self.tags_edit = row("标签", QLineEdit(), "tags")
 
@@ -183,6 +189,7 @@ class SubmissionForm(QWidget):
         """用字典里的值填充表单。"""
         self.title_edit.setText(str(data.get("title_template", "")))
         self.part_title_edit.setText(str(data.get("part_title_template", "")))
+        self.date_offset_spin.setValue(int(data.get("date_offset_days", 0)))
         self.desc_edit.setText(str(data.get("desc_template", "")))
         self.tags_edit.setText(", ".join(data.get("tags", []) or []))
         self.cover_edit.setText(str(data.get("cover_path", "")))
@@ -204,6 +211,7 @@ class SubmissionForm(QWidget):
         """把表单值写入字典（写入全部投稿字段，形成完整快照）。"""
         data["title_template"] = self.title_edit.text().strip()
         data["part_title_template"] = self.part_title_edit.text().strip()
+        data["date_offset_days"] = self.date_offset_spin.value()
         data["desc_template"] = self.desc_edit.text().strip()
         data["tags"] = [x.strip() for x in self.tags_edit.text().replace("，", ",").split(",") if x.strip()]
         data["cover_path"] = self.cover_edit.text().strip()

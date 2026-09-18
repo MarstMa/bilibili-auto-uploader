@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -183,16 +184,54 @@ class FolderDetailPage(QWidget):
         if self._run_worker is not None and self._run_worker.isRunning():
             self.log_label.setText("正在运行中，请稍候…")
             return
-        self.log_label.setText("开始运行…")
         path = self.folder_path
+
+        # 生成标题预览，供确认/修改
+        title, count = self._preview_title()
+        if count == 0:
+            self.log_label.setText("没有发现新的视频文件。")
+            return
+        title, ok = QInputDialog.getText(
+            self, "确认上传", f"发现 {count} 个新文件，稿件标题（可修改）：", text=title
+        )
+        if not ok:
+            return
+        title = title.strip()
+
+        self.log_label.setText("开始运行…")
         self.upload_started.emit(path)
         self._run_worker = RunWorker(
-            lambda emit: pipeline.run_folder(self.config.data, path, self.state, on_progress=emit),
+            lambda emit: pipeline.run_folder(
+                self.config.data, path, self.state, on_progress=emit, title_override=title
+            ),
             self,
         )
         self._run_worker.progress.connect(self.log_label.setText)
         self._run_worker.finished_result.connect(lambda r, p=path: self._on_run_done(p, r))
         self._run_worker.start()
+
+    def _preview_title(self) -> tuple[str, int]:
+        """生成标题预览，返回 (标题, 新文件数)。"""
+        from app.core import naming, scanner
+
+        folder = self._find_folder()
+        effective = get_folder_effective_config(self.config.data, folder)
+        exts = effective.get("video_extensions", [])
+        exclude = []
+        af = effective.get("archive_folder", "")
+        if af:
+            exclude.append(af)
+        if effective.get("cleanup_mode") == "archive":
+            exclude.append(os.path.join(self.folder_path, "auto_archived"))
+        new_files = scanner.scan_new_files([self.folder_path], exts, self.state, exclude_folders=exclude)
+        if not new_files:
+            return "", 0
+        vars_ = naming.build_variables(
+            new_files[0].path, index=1, count=len(new_files),
+            date_offset_days=effective.get("date_offset_days", 0),
+        )
+        title = naming.render_template(effective.get("title_template", ""), **vars_)
+        return title, len(new_files)
 
     def _on_run_done(self, path: str, result: dict) -> None:
         self.upload_finished.emit(path)

@@ -84,21 +84,19 @@ def download_latest(asset_url: str, dest_path: str, on_progress=None) -> bool:
 
 
 def _build_update_bat(exe_name: str, new_name: str) -> str:
-    """生成替换 exe 的批处理脚本（用重命名避免覆盖被锁定的运行中文件）。"""
-    old_name = exe_name + ".old"
+    """生成替换 exe 的批处理脚本：等待进程退出后用 move 覆盖替换。
+
+    用 tasklist 判断旧进程是否已退出，退出后再 move，避免文件被锁导致死循环。
+    """
     return (
         "@echo off\n"
         "chcp 65001 >nul\n"
-        f'if exist "%~dp0{old_name}" del /q "%~dp0{old_name}" >nul 2>&1\n'
         ":wait\n"
         "timeout /t 1 /nobreak >nul\n"
-        f'ren "%~dp0{exe_name}" "{old_name}" >nul 2>&1\n'
-        f'if not exist "%~dp0{old_name}" goto wait\n'
-        f'ren "%~dp0{new_name}" "{exe_name}" >nul 2>&1\n'
-        f'if not exist "%~dp0{exe_name}" goto wait\n'
+        f'tasklist /fi "IMAGENAME eq {exe_name}" 2>nul | find /i "{exe_name}" >nul\n'
+        "if not errorlevel 1 goto wait\n"
+        f'move /y "%~dp0{new_name}" "%~dp0{exe_name}" >nul 2>&1\n'
         f'start "" "%~dp0{exe_name}"\n'
-        "timeout /t 2 /nobreak >nul\n"
-        f'del /q "%~dp0{old_name}" >nul 2>&1\n'
         'del "%~f0"\n'
     )
 

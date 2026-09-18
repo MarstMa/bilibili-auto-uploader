@@ -4,7 +4,7 @@
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class _SafeDict(dict):
@@ -27,13 +27,15 @@ def build_variables(
     part_index: int | None = None,
     count: int = 1,
     now: datetime | None = None,
+    date_offset_days: int = 0,
 ) -> dict:
     """根据一个文件构造模板变量字典。"""
     now = now or datetime.now()
+    date = now + timedelta(days=int(date_offset_days or 0))
     folder = os.path.basename(os.path.dirname(file_path)) or "默认"
     name, _ext = os.path.splitext(os.path.basename(file_path))
     return {
-        "date": now.strftime("%Y-%m-%d"),
+        "date": date.strftime("%Y-%m-%d"),
         "time": now.strftime("%H%M"),
         "index": index,
         "part_index": part_index if part_index is not None else index,

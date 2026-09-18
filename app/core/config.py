@@ -17,6 +17,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "schedule_times": ["08:00"],  # 每天运行的时刻 "HH:MM"
     "title_template": "{folder} {date} 第{index}期",
     "part_title_template": "P{part_index}",
+    "date_offset_days": 0,  # 日期偏移（天），负数表示前几天，如 -1 表示昨天
     "desc_template": "",
     "tags": [],
     "cover_path": "",
@@ -42,6 +43,7 @@ FOLDER_OVERRIDE_KEYS: list[str] = [
     "schedule_times",
     "title_template",
     "part_title_template",
+    "date_offset_days",
     "desc_template",
     "tags",
     "cover_path",

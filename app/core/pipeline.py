@@ -52,7 +52,10 @@ def _make_parts(files, config, threshold: int, temp_dir: str, emit: ProgressFn) 
             segs = [f.path]
         for seg in segs:
             part_index += 1
-            vars_ = naming.build_variables(f.path, index=1, part_index=part_index, count=len(files))
+            vars_ = naming.build_variables(
+                f.path, index=1, part_index=part_index, count=len(files),
+                date_offset_days=config.get("date_offset_days", 0),
+            )
             part_title = naming.render_template(config["part_title_template"], **vars_)
             parts.append((seg, part_title))
     return parts
@@ -60,10 +63,13 @@ def _make_parts(files, config, threshold: int, temp_dir: str, emit: ProgressFn) 
 
 def _main_variables(files, config, index: int, count: int) -> dict:
     first = files[0].path if files else ""
-    return naming.build_variables(first, index=index, count=count)
+    return naming.build_variables(
+        first, index=index, count=count,
+        date_offset_days=config.get("date_offset_days", 0),
+    )
 
 
-def _build_submissions(new_files, config, threshold: int, temp_dir: str, emit: ProgressFn) -> list[_Submission]:
+def _build_submissions(new_files, config, threshold: int, temp_dir: str, emit: ProgressFn, title_override: str | None = None) -> list[_Submission]:
     strategy = config.get("multi_file_strategy", "multipart")
     submissions: list[_Submission] = []
 
@@ -89,7 +95,7 @@ def _build_submissions(new_files, config, threshold: int, temp_dir: str, emit: P
             )
             parts = _make_parts([merged], config, threshold, temp_dir, emit)
             vars_ = _main_variables(new_files, config, 1, 1)
-            title = naming.render_template(config["title_template"], **vars_)
+            title = title_override or naming.render_template(config["title_template"], **vars_)
             submissions.append(_Submission(title, parts, new_files))
             return submissions
         except Exception as e:  # noqa: BLE001
@@ -99,7 +105,7 @@ def _build_submissions(new_files, config, threshold: int, temp_dir: str, emit: P
     # multipart（默认）
     parts = _make_parts(new_files, config, threshold, temp_dir, emit)
     vars_ = _main_variables(new_files, config, 1, 1)
-    title = naming.render_template(config["title_template"], **vars_)
+    title = title_override or naming.render_template(config["title_template"], **vars_)
     submissions.append(_Submission(title, parts, new_files))
     return submissions
 
@@ -126,7 +132,7 @@ def _ensure_credential(emit: ProgressFn):
     return cred, "ok"
 
 
-def _run_single_folder(effective_cfg: dict, folder_path: str, state, emit: ProgressFn, cred) -> dict:
+def _run_single_folder(effective_cfg: dict, folder_path: str, state, emit: ProgressFn, cred, title_override: str | None = None) -> dict:
     """处理单个文件夹：扫描→命名→拆分→上传→记录→清理。"""
     name = os.path.basename(folder_path) or folder_path
 
@@ -149,7 +155,7 @@ def _run_single_folder(effective_cfg: dict, folder_path: str, state, emit: Progr
     threshold = int(float(effective_cfg.get("split_threshold_gb", 3.5)) * 1024 ** 3)
     temp_dir = tempfile.mkdtemp(prefix="bili_run_")
     try:
-        submissions = _build_submissions(new_files, effective_cfg, threshold, temp_dir, emit)
+        submissions = _build_submissions(new_files, effective_cfg, threshold, temp_dir, emit, title_override)
     except Exception as e:  # noqa: BLE001
         logger.exception("构建上传任务失败")
         return {"event": "failed", "count": 0, "message": f"[{name}] 处理失败：{e}"}
@@ -221,7 +227,7 @@ def _find_folder(config: dict, folder_path: str) -> dict:
     return {"path": folder_path}
 
 
-def run_folder(config: dict, folder_path: str, state, on_progress: ProgressFn | None = None) -> dict:
+def run_folder(config: dict, folder_path: str, state, on_progress: ProgressFn | None = None, title_override: str | None = None) -> dict:
     """上传单个文件夹（详情页「立即上传此文件夹」）。"""
     def emit(msg: str) -> None:
         logger.info(msg)
@@ -236,7 +242,7 @@ def run_folder(config: dict, folder_path: str, state, on_progress: ProgressFn | 
 
     folder = _find_folder(config, folder_path)
     effective = get_folder_effective_config(config, folder)
-    result = _run_single_folder(effective, folder_path, state, emit, cred)
+    result = _run_single_folder(effective, folder_path, state, emit, cred, title_override)
     result["ok"] = result["event"] in ("success", "partial", "no_new_files")
     if "message" not in result:
         result["message"] = "没有发现新的视频文件。" if result["event"] == "no_new_files" else ""
