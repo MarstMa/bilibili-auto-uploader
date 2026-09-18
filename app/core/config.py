@@ -20,7 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "desc_template": "",
     "tags": [],
     "cover_path": "",
-    "tid": 160,  # 分区 ID，160=生活
+    "tid": 21,  # 分区 ID（二级分区），21=生活·日常
     "copyright": 1,  # 1 原创 / 2 转载
     "source": "",  # 转载来源（copyright=2 时使用）
     "multi_file_strategy": "multipart",  # multipart / merge / separate

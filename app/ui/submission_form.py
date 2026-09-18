@@ -14,13 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# 常见分区（名称, tid）。如需更细的子分区，可手动改 config.json 的 tid。
-PARTITIONS = [
-    ("生活", 160), ("科技", 188), ("游戏", 4), ("知识", 36), ("影视", 181),
-    ("动画", 1), ("音乐", 3), ("娱乐", 5), ("时尚", 155), ("美食", 211),
-    ("动物圈", 217), ("舞蹈", 129), ("鬼畜", 119), ("资讯", 202), ("运动", 234),
-    ("汽车", 223), ("纪录片", 177),
-]
+from app.core.zones import ZONE_TREE, find_zone_for_tid
 
 # 各字段的说明文字（悬浮提示 + 需要时的小字说明）
 TOOLTIPS = {
@@ -76,10 +70,15 @@ class SubmissionForm(QWidget):
         h.addWidget(browse)
         row("封面图片", cover_box, "cover_path")
 
-        self.tid_combo = QComboBox()
-        for name, tid in PARTITIONS:
-            self.tid_combo.addItem(name, tid)
-        row("分区", self.tid_combo, "tid")
+        self.zone_combo = QComboBox()
+        for name, _zone_tid, _subs in ZONE_TREE:
+            self.zone_combo.addItem(name)
+        self.zone_combo.currentIndexChanged.connect(self._on_zone_changed)
+        row("分区", self.zone_combo, "tid")
+
+        self.subzone_combo = QComboBox()
+        row("二级分区", self.subzone_combo, "tid")
+        self._on_zone_changed()
 
         self.copyright_combo = QComboBox()
         self.copyright_combo.addItem("原创", 1)
@@ -159,6 +158,13 @@ class SubmissionForm(QWidget):
         self.delay_spin.setEnabled(mode == "timed")
         self.schedule_time_edit.setEnabled(mode == "schedule")
 
+    def _on_zone_changed(self) -> None:
+        zi = self.zone_combo.currentIndex()
+        self.subzone_combo.clear()
+        if 0 <= zi < len(ZONE_TREE):
+            for sub_name, sub_tid in ZONE_TREE[zi][2]:
+                self.subzone_combo.addItem(sub_name, sub_tid)
+
     @staticmethod
     def _set_combo(combo: QComboBox, value) -> None:
         idx = combo.findData(value)
@@ -180,7 +186,9 @@ class SubmissionForm(QWidget):
         self.desc_edit.setText(str(data.get("desc_template", "")))
         self.tags_edit.setText(", ".join(data.get("tags", []) or []))
         self.cover_edit.setText(str(data.get("cover_path", "")))
-        self._set_combo(self.tid_combo, data.get("tid", 160))
+        zi, si = find_zone_for_tid(data.get("tid", 21))
+        self.zone_combo.setCurrentIndex(zi)  # 触发 _on_zone_changed 填充二级分区
+        self.subzone_combo.setCurrentIndex(si)
         self._set_combo(self.copyright_combo, data.get("copyright", 1))
         self.source_edit.setText(str(data.get("source", "")))
         self._set_combo(self.strategy_combo, data.get("multi_file_strategy", "multipart"))
@@ -199,7 +207,7 @@ class SubmissionForm(QWidget):
         data["desc_template"] = self.desc_edit.text().strip()
         data["tags"] = [x.strip() for x in self.tags_edit.text().replace("，", ",").split(",") if x.strip()]
         data["cover_path"] = self.cover_edit.text().strip()
-        data["tid"] = int(self.tid_combo.currentData())
+        data["tid"] = int(self.subzone_combo.currentData())
         data["copyright"] = int(self.copyright_combo.currentData())
         data["source"] = self.source_edit.text().strip()
         data["multi_file_strategy"] = self.strategy_combo.currentData()

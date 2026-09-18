@@ -191,15 +191,16 @@ class FolderDetailPage(QWidget):
             self,
         )
         self._run_worker.progress.connect(self.log_label.setText)
-        self._run_worker.finished_result.connect(self._on_run_done)
+        self._run_worker.finished_result.connect(lambda r, p=path: self._on_run_done(p, r))
         self._run_worker.start()
 
-    def _on_run_done(self, result: dict) -> None:
-        self.upload_finished.emit(self.folder_path)
+    def _on_run_done(self, path: str, result: dict) -> None:
+        self.upload_finished.emit(path)
         msg = result.get("message", "")
         event = result.get("event", "")
         self.log_label.setText(msg)
-        self.load()
+        if path == self.folder_path:
+            self.load()  # 仅当仍在当前文件夹时才刷新状态
         if event == "success":
             self._notify("上传成功", msg)
         elif event == "partial":
